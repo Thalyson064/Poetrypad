@@ -1,0 +1,48 @@
+import { Timestamp } from 'firebase/firestore';
+
+export const initialPoems = [
+  {
+    id: '1',
+    title: 'Primavera do Coração',
+    excerpt: 'Quando o sol desperta na manhã dourada, E as flores dançam na brisa perfumada...',
+    content: 'Quando o sol desperta na manhã dourada,\nE as flores dançam na brisa perfumada,\nMeu coração floresce, alma renovada,\nNesta eterna primavera abençoada.',
+    updatedAt: Timestamp.fromDate(new Date('2025-07-21')),
+    tags: ['Esperança'],
+    background: { type: 'color', value: 'bg-yellow-100' },
+    imageUrls: [],
+    history: [],
+  },
+  {
+    id: '2',
+    title: 'Saudades do Outono',
+    excerpt: 'As folhas caem como lágrimas douradas, Carregando memórias de dias passados...',
+    content: 'As folhas caem como lágrimas douradas,\nCarregando memórias de dias passados,\nO vento sussurra canções desbotadas,\nDeixando no peito amores inacabados.',
+    updatedAt: Timestamp.fromDate(new Date('2025-07-18')),
+    tags: ['Melancolia'],
+    background: { type: 'image', value: 'https://placehold.co/600x400.png', dataAiHint: 'autumn leaves' },
+    imageUrls: [],
+    history: [],
+  },
+  {
+    id: '3',
+    title: 'Encontro de Almas',
+    excerpt: 'Nos teus olhos encontrei o infinito, Um universo de amor bendito...',
+    content: 'Nos teus olhos encontrei o infinito,\nUm universo de amor bendito,\nOnde meu ser se perde, e me permito,\nSonhar o sonho mais bonito.',
+    updatedAt: Timestamp.fromDate(new Date('2025-07-16')),
+    tags: ['Amor'],
+    background: { type: 'color', value: 'bg-card' },
+    imageUrls: [],
+    history: [],
+  },
+  {
+    id: '4',
+    title: 'Reflexões Noturnas',
+    excerpt: 'Na quietude da noite escura, Minha mente busca a verdade pura...',
+    content: 'Na quietude da noite escura,\nMinha mente busca a verdade pura,\nEntre estrelas e a lua que fulgura,\nEncontro a paz que minha alma cura.',
+    updatedAt: Timestamp.fromDate(new Date('2025-07-13')),
+    tags: ['Reflexão'],
+    background: { type: 'color', value: 'bg-green-100' },
+    imageUrls: [],
+    history: [],
+  },
+];
