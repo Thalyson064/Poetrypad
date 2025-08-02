@@ -4,21 +4,28 @@
  * @fileOverview Um agente de IA para narrar poemas usando Text-to-Speech.
  *
  * - narratePoem - Uma função que converte o texto de um poema em áudio.
+ * - NarratePoemInput - O tipo de entrada para a função narratePoem.
  * - NarratePoemOutput - O tipo de retorno para a função narratePoem.
  */
 
-import {ai}from '@/ai/genkit';
-import {z}from 'genkit';
+import {ai} from '@/ai/genkit';
+import {z} from 'genkit';
 import {googleAI}from '@genkit-ai/googleai';
 import wav from 'wav';
+
+const NarratePoemInputSchema = z.object({
+    text: z.string().describe('O texto a ser narrado.'),
+    voice: z.string().optional().default('Algenib').describe('O nome da voz a ser usada para a narração (ex: Algenib, Chara).'),
+});
+export type NarratePoemInput = z.infer<typeof NarratePoemInputSchema>;
 
 const NarratePoemOutputSchema = z.object({
   audioDataUri: z.string().describe("O áudio do poema narrado, como um data URI no formato 'data:audio/wav;base64,<encoded_data>'."),
 });
 export type NarratePoemOutput = z.infer<typeof NarratePoemOutputSchema>;
 
-export async function narratePoem(text: string): Promise<NarratePoemOutput> {
-  return narratePoemFlow(text);
+export async function narratePoem(input: NarratePoemInput): Promise<NarratePoemOutput> {
+  return narratePoemFlow(input);
 }
 
 // Helper para converter PCM para WAV
@@ -52,10 +59,10 @@ async function toWav(
 const narratePoemFlow = ai.defineFlow(
   {
     name: 'narratePoemFlow',
-    inputSchema: z.string(),
+    inputSchema: NarratePoemInputSchema,
     outputSchema: NarratePoemOutputSchema,
   },
-  async (text) => {
+  async ({ text, voice }) => {
     // Sanitize the input text to remove problematic characters for TTS
     const sanitizedText = text.replace(/[^a-zA-Z0-9áéíóúâêôãõàèìòùÁÉÍÓÚÂÊÔÃÕÀÈÌÒÙçÇ.,!?;:() \n]/g, '');
 
@@ -69,7 +76,7 @@ const narratePoemFlow = ai.defineFlow(
         responseModalities: ['AUDIO'],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Algenib' }, // Uma voz suave e clara
+            prebuiltVoiceConfig: { voiceName: voice || 'Algenib' },
           },
         },
       },

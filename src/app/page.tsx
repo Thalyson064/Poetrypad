@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast"
 import { auth, db } from '@/lib/firebase';
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { collection, doc, setDoc, getDocs, deleteDoc, writeBatch, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, getDoc, deleteDoc, writeBatch, Timestamp } from 'firebase/firestore';
 import type { View, Poem, AppSettings, SyncStatus } from '@/types';
 import { LibraryView } from '@/components/views/LibraryView';
 import { EditorChoiceView } from '@/components/views/EditorChoiceView';
@@ -35,6 +35,7 @@ const defaultAppSettings: AppSettings = {
     correctionLanguage: 'pt-br',
     aiSensitivity: 50,
     aiPersonality: 'default',
+    narrationVoice: 'Algenib', // Voz padrão masculina
     enableVoiceInput: false,
     enableWritingReminders: true,
     writingReminderTime: '19:00',
@@ -53,24 +54,27 @@ export default function PoetryPad() {
   const POEMS_LOCAL_STORAGE_KEY = 'poetrypad-poems';
   const SETTINGS_LOCAL_STORAGE_KEY = 'poetrypad-settings';
 
-  // Load initial data from localStorage
+  // Load initial data from localStorage for non-logged-in users
   useEffect(() => {
-    try {
-        const savedPoems = localStorage.getItem(POEMS_LOCAL_STORAGE_KEY);
-        if (savedPoems) {
-            const localPoems = JSON.parse(savedPoems).map(convertTimestamps);
-            setPoems(localPoems);
-        } else {
-            setPoems(initialPoems.map(convertTimestamps));
-        }
+    if (!auth.currentUser) {
+        try {
+            const savedPoems = localStorage.getItem(POEMS_LOCAL_STORAGE_KEY);
+            if (savedPoems) {
+                const localPoems = JSON.parse(savedPoems).map(convertTimestamps);
+                setPoems(localPoems);
+            } else {
+                setPoems(initialPoems.map(convertTimestamps));
+            }
 
-        const savedSettings = localStorage.getItem(SETTINGS_LOCAL_STORAGE_KEY);
-        if (savedSettings) {
-            setSettings(prev => ({ ...defaultAppSettings, ...JSON.parse(savedSettings) }));
+            const savedSettings = localStorage.getItem(SETTINGS_LOCAL_STORAGE_KEY);
+            if (savedSettings) {
+                setSettings(prev => ({ ...defaultAppSettings, ...JSON.parse(savedSettings) }));
+            }
+        } catch (error) {
+            console.error("Error loading from localStorage", error);
+            setPoems(initialPoems.map(convertTimestamps));
+            setSettings(defaultAppSettings);
         }
-    } catch (error) {
-        console.error("Error loading from localStorage", error);
-        setPoems(initialPoems.map(convertTimestamps));
     }
   }, []);
 
@@ -90,66 +94,66 @@ export default function PoetryPad() {
   useEffect(() => {
       localStorage.setItem(SETTINGS_LOCAL_STORAGE_KEY, JSON.stringify(settings));
       
-      const root = window.document.documentElement;
-      root.classList.remove('dark', 'theme-blue', 'theme-red', 'theme-purple');
-      
-      if (settings.isDarkMode) {
-        root.classList.add('dark');
-      }
-      
-      root.style.setProperty('--font-size', `${settings.fontSize}px`);
-  
-      if (settings.themeColor !== 'default') {
-          root.classList.add(`theme-${settings.themeColor}`);
+      if (typeof window !== 'undefined') {
+        const root = window.document.documentElement;
+        root.classList.remove('dark', 'theme-blue', 'theme-red', 'theme-purple');
+        
+        if (settings.isDarkMode) {
+          root.classList.add('dark');
+        }
+        
+        root.style.setProperty('--font-size', `${settings.fontSize}px`);
+    
+        if (settings.themeColor !== 'default') {
+            root.classList.add(`theme-${settings.themeColor}`);
+        }
       }
   
   }, [settings]);
 
-  const syncWithFirebase = async (currentUser: FirebaseUser) => {
-    if (syncStatus === 'syncing') return;
-    setSyncStatus('syncing');
-    
-    try {
-        const poemsCollection = collection(db, 'users', currentUser.uid, 'poems');
-        
-        const localPoemsJSON = localStorage.getItem(POEMS_LOCAL_STORAGE_KEY);
-        const localPoems: Poem[] = localPoemsJSON ? JSON.parse(localPoemsJSON).map(convertTimestamps) : [];
-
-        const remoteSnapshot = await getDocs(poemsCollection);
-        const remotePoems: Poem[] = remoteSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Poem)).map(convertTimestamps);
-        
-        const mergedPoemsMap = new Map<string, Poem>();
-
-        [...localPoems, ...remotePoems].forEach(poem => {
-            const existing = mergedPoemsMap.get(poem.id);
-            if (!existing || (poem.updatedAt?.toDate() > existing.updatedAt?.toDate())) {
-                mergedPoemsMap.set(poem.id, poem);
+    const loadDataFromFirebase = async (currentUser: FirebaseUser) => {
+        setSyncStatus('syncing');
+        try {
+            // Fetch Poems
+            const poemsCollection = collection(db, 'users', currentUser.uid, 'poems');
+            const remoteSnapshot = await getDocs(poemsCollection);
+            const remotePoems: Poem[] = remoteSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Poem)).map(convertTimestamps);
+            
+            if (remotePoems.length > 0) {
+              setPoems(remotePoems);
+            } else {
+              // If no poems in Firebase, upload local/initial ones
+              const batch = writeBatch(db);
+              poems.forEach(poem => {
+                  const docRef = doc(db, 'users', currentUser.uid, 'poems', poem.id);
+                  const poemToSave = JSON.parse(JSON.stringify(poem));
+                  batch.set(docRef, poemToSave);
+              });
+              await batch.commit();
             }
-        });
 
-        const mergedPoems = Array.from(mergedPoemsMap.values());
-        
-        setPoems(mergedPoems);
-
-        const batch = writeBatch(db);
-        mergedPoems.forEach(poem => {
-            const docRef = doc(db, 'users', currentUser.uid, 'poems', poem.id);
-            const poemToSave = JSON.parse(JSON.stringify(poem));
-            batch.set(docRef, poemToSave);
-        });
-        await batch.commit();
-
-        setSyncStatus('synced');
-        if (settings.enableBackupAlerts) {
-            toast({ title: "Sincronizado!", description: "Seus poemas estão salvos na nuvem." });
+            // Fetch Settings
+            const settingsDocRef = doc(db, 'users', currentUser.uid, 'settings', 'userSettings');
+            const settingsDoc = await getDoc(settingsDocRef);
+            if (settingsDoc.exists()) {
+                const remoteSettings = settingsDoc.data() as AppSettings;
+                setSettings(remoteSettings);
+            } else {
+                // If no settings in Firebase, upload local ones
+                const settingsToSave = JSON.parse(JSON.stringify(settings));
+                await setDoc(settingsDocRef, settingsToSave);
+            }
+            
+            setSyncStatus('synced');
+            if (settings.enableBackupAlerts) {
+                toast({ title: "Sincronizado!", description: "Seus poemas e configurações foram carregados da nuvem." });
+            }
+        } catch (error) {
+            console.error("Firebase sync error:", error);
+            setSyncStatus('offline');
+            toast({ title: "Erro de Sincronização", description: "Não foi possível conectar com a nuvem. Suas alterações podem não ser salvas.", variant: "destructive" });
         }
-
-    } catch (error) {
-        console.error("Firebase sync error:", error);
-        setSyncStatus('offline');
-        toast({ title: "Erro de Sincronização", description: "Não foi possível conectar com a nuvem. Suas alterações estão salvas localmente. Verifique as regras de segurança do Firestore.", variant: "destructive" });
-    }
-  };
+    };
 
 
   // Handle Firebase auth state changes
@@ -157,9 +161,14 @@ export default function PoetryPad() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         setUser(currentUser);
         if (currentUser) {
-            syncWithFirebase(currentUser);
+            loadDataFromFirebase(currentUser);
         } else {
+            // User logged out, reset to local/initial state
             setSyncStatus('idle'); 
+            const savedPoems = localStorage.getItem(POEMS_LOCAL_STORAGE_KEY);
+            setPoems(savedPoems ? JSON.parse(savedPoems).map(convertTimestamps) : initialPoems.map(convertTimestamps));
+            const savedSettings = localStorage.getItem(SETTINGS_LOCAL_STORAGE_KEY);
+            setSettings(savedSettings ? JSON.parse(savedSettings) : defaultAppSettings);
         }
     });
     return () => unsubscribe();
@@ -185,7 +194,7 @@ export default function PoetryPad() {
           await signOut(auth);
           setUser(null);
           setSyncStatus('idle');
-          toast({ title: "Logout realizado", description: "Você foi desconectado. Seus poemas continuam salvos neste dispositivo." });
+          toast({ title: "Logout realizado", description: "Você foi desconectado. Seus dados estão salvos na nuvem." });
           navigateTo({ name: 'LIBRARY' });
       } catch (error) {
           console.error("Error during sign out:", error);
@@ -253,7 +262,7 @@ export default function PoetryPad() {
             toast({ title: "Erro de Sincronização", description: "O poema está salvo localmente, mas não foi possível salvar na nuvem.", variant: "destructive"});
         }
     }
-    if (currentView.name !== 'POEM_DETAIL' || currentView.poem.id !== poemWithHistory.id) {
+    if (currentView.name !== 'POEM_DETAIL' || (currentView.name === 'POEM_DETAIL' && currentView.poem.id !== poemWithHistory.id)) {
        navigateTo({ name: 'POEM_DETAIL', poem: poemWithHistory });
     }
   }
@@ -280,16 +289,23 @@ export default function PoetryPad() {
     navigateTo({ name: 'LIBRARY' });
   }
 
-  const handleReset = (type: 'cache' | 'settings' | 'all') => {
+  const handleReset = async (type: 'cache' | 'settings' | 'all') => {
       switch (type) {
           case 'cache':
               localStorage.removeItem(POEMS_LOCAL_STORAGE_KEY);
               setPoems(initialPoems.map(convertTimestamps));
               toast({ title: "Cache de Poemas Limpo", description: "Seus poemas locais foram resetados para o estado inicial." });
+              if (user) {
+                // Optionally clear firebase poems for the user too
+              }
               break;
           case 'settings':
               setSettings(defaultAppSettings);
               toast({ title: "Configurações Restauradas", description: "As configurações foram restauradas para o padrão." });
+               if (user) {
+                const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'userSettings');
+                await setDoc(settingsDocRef, defaultAppSettings);
+              }
               break;
           case 'all':
               setPoems([]);
@@ -297,7 +313,9 @@ export default function PoetryPad() {
               localStorage.removeItem(POEMS_LOCAL_STORAGE_KEY);
               localStorage.removeItem(SETTINGS_LOCAL_STORAGE_KEY);
               toast({ title: "Todos os Dados Excluídos", description: "Seus poemas e configurações locais foram removidos.", variant: "destructive" });
-              // Note: This does not delete from Firebase. A separate function would be needed for that.
+              if (user) {
+                // This would be a more complex operation to delete all user data from firestore
+              }
               break;
       }
   };
@@ -310,13 +328,13 @@ export default function PoetryPad() {
       case 'EDITOR_CHOICE':
         return <EditorChoiceView onFreeEditorClick={() => navigateTo({ name: 'EDITOR_FREE'})} onAiAssistantClick={() => navigateTo({ name: 'EDITOR_AI' })} onBack={handleBack} />;
       case 'EDITOR_FREE':
-        return <EditorView onBack={handleBack} onSave={handleSavePoem} onNavigate={navigateTo} poem={currentView.poem} onDelete={handleDeletePoem} settings={settings} />;
+        return <EditorView onBack={handleBack} onSave={handleSavePoem} onNavigate={navigateTo} poem={currentView.poem} onDelete={handleDeletePoem} settings={settings} setSettings={setSettings} />;
       case 'EDITOR_AI':
         return <AiView onBack={handleBack} onNavigate={navigateTo} onSave={handleSavePoem} />;
       case 'SETTINGS':
         return <SettingsView onBack={() => navigateTo({ name: 'LIBRARY' })} onNavigate={navigateTo} settings={settings} setSettings={setSettings} user={user} syncStatus={syncStatus} handleGoogleLogin={handleGoogleLogin} handleLogout={handleLogout} handleReset={handleReset} defaultSettings={defaultAppSettings}/>;
       case 'POEM_DETAIL':
-        return <EditorView onBack={handleBack} onSave={handleSavePoem} onNavigate={navigateTo} poem={currentView.poem} onDelete={handleDeletePoem} settings={settings} />;
+        return <EditorView onBack={handleBack} onSave={handleSavePoem} onNavigate={navigateTo} poem={currentView.poem} onDelete={handleDeletePoem} settings={settings} setSettings={setSettings} />;
       case 'HELP':
         return <HelpView onBack={handleBack} />;
       default:

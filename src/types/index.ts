@@ -8,6 +8,7 @@ export type Poem = {
     tags: string[];
     background: { type: string, value: string, dataAiHint?: string };
     imageUrls: string[];
+    audioUrl?: string; // Opcional: para o áudio carregado pelo usuário
     updatedAt: Timestamp;
     history: { title: string; content: string; updatedAt: Timestamp }[];
     isCurrent?: boolean; // Used for history view
@@ -30,6 +31,7 @@ export type AppSettings = {
     correctionLanguage: string; // 'pt-br', 'en-us', 'es-es'
     aiSensitivity: number; // 0-100
     aiPersonality: string; // 'default', 'creative', 'emotional', 'philosophical'
+    narrationVoice: string; // 'Algenib', 'Chara', etc.
     enableVoiceInput: boolean;
     enableWritingReminders: boolean;
     writingReminderTime: string; // "HH:mm"

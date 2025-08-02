@@ -4,14 +4,14 @@ import { useState } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import type { AppSettings, View, SyncStatus } from '@/types';
 import { cn } from '@/lib/utils';
-import { ArrowLeft, Sun, Type, Palette, Check, PenLine, Save, Globe, BrainCircuit, SlidersHorizontal, Mic, User, LogOut, Loader2, CheckCircle, CloudOff, Cloud, Bell, Clock, Pen, ShieldCheck, MapPin, History, HelpCircle, HeartHandshake, ChevronRight, RefreshCcw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Sun, Type, Palette, Check, PenLine, Save, Globe, BrainCircuit, SlidersHorizontal, Mic, User, LogOut, Loader2, CheckCircle, CloudOff, Cloud, Bell, Clock, Pen, ShieldCheck, MapPin, History, HelpCircle, HeartHandshake, ChevronRight, RefreshCcw, Trash2, Voicemail } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select"
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -31,6 +31,24 @@ type SettingsViewProps = {
     defaultSettings: AppSettings;
 };
 
+const voices = {
+  male: [
+    { value: 'algenib', label: 'Masculina 1 (Padrão)' },
+    { value: 'achernar', label: 'Masculina 2' },
+    { value: 'alnilam', label: 'Masculina 3' },
+    { value: 'orus', label: 'Masculina 4' },
+    { value: 'rasalgethi', label: 'Masculina 5' },
+    { value: 'zubenelgenubi', label: 'Masculina 6' }
+  ],
+  female: [
+    { value: 'vindemiatrix', label: 'Feminina 1' },
+    { value: 'aoede', label: 'Feminina 2' },
+    { value: 'callirrhoe', label: 'Feminina 3' },
+    { value: 'leda', label: 'Feminina 4' },
+    { value: 'erinome', label: 'Feminina 5' },
+    { value: 'pulcherrima', label: 'Feminina 6' }
+  ]
+};
 
 export const SettingsView = ({ onBack, onNavigate, settings, setSettings, user, syncStatus, handleGoogleLogin, handleLogout, handleReset }: SettingsViewProps) => {
     const { 
@@ -41,6 +59,7 @@ export const SettingsView = ({ onBack, onNavigate, settings, setSettings, user, 
         correctionLanguage, 
         aiSensitivity, 
         aiPersonality, 
+        narrationVoice,
         enableVoiceInput,
         enableWritingReminders,
         writingReminderTime,
@@ -205,7 +224,27 @@ export const SettingsView = ({ onBack, onNavigate, settings, setSettings, user, 
                   </Select>
                 </div>
 
-                <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="voice-input" className="flex items-center gap-3">
+                    <Mic className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex flex-col">
+                        <span className="font-medium">Entrada por Voz</span>
+                        <span className="text-xs text-muted-foreground">Permite ditado de poemas</span>
+                    </div>
+                  </Label>
+                  <Switch id="voice-input" checked={enableVoiceInput} onCheckedChange={(checked) => handleSettingChange('enableVoiceInput', checked)} />
+                </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-card rounded-2xl shadow-sm overflow-hidden">
+          <CardHeader>
+            <CardTitle className="text-base font-medium text-muted-foreground">Preferências da IA</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="px-6 pb-4 space-y-6">
+                 <div className="space-y-3">
                     <Label htmlFor="ai-personality" className="flex items-center gap-3">
                         <BrainCircuit className="h-5 w-5 text-muted-foreground" />
                         <span className="font-medium">Personalidade da IA</span>
@@ -235,16 +274,27 @@ export const SettingsView = ({ onBack, onNavigate, settings, setSettings, user, 
                   </div>
                   <p className="text-center text-xs text-gray-400">Controla a complexidade do vocabulário</p>
                 </div>
-
+                
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="voice-input" className="flex items-center gap-3">
-                    <Mic className="h-5 w-5 text-muted-foreground" />
-                    <div className="flex flex-col">
-                        <span className="font-medium">Entrada por Voz</span>
-                        <span className="text-xs text-muted-foreground">Permite ditado de poemas</span>
-                    </div>
+                   <Label htmlFor="narration-voice" className="flex items-center gap-3">
+                    <Voicemail className="h-5 w-5 text-muted-foreground" />
+                    <span className="font-medium">Voz de Narração Padrão</span>
                   </Label>
-                  <Switch id="voice-input" checked={enableVoiceInput} onCheckedChange={(checked) => handleSettingChange('enableVoiceInput', checked)} />
+                  <Select value={narrationVoice} onValueChange={(value) => handleSettingChange('narrationVoice', value)}>
+                    <SelectTrigger id="narration-voice" className="w-[180px]">
+                      <SelectValue placeholder="Selecione uma voz"/>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectGroup>
+                            <SelectLabel>Vozes Masculinas</SelectLabel>
+                            {voices.male.map(voice => <SelectItem key={voice.value} value={voice.value}>{voice.label}</SelectItem>)}
+                        </SelectGroup>
+                        <SelectGroup>
+                            <SelectLabel>Vozes Femininas</SelectLabel>
+                            {voices.female.map(voice => <SelectItem key={voice.value} value={voice.value}>{voice.label}</SelectItem>)}
+                        </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
             </div>
           </CardContent>

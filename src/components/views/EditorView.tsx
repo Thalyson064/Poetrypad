@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, BookText, Check, Copy, History, ImageIcon, Link, Loader2, Mic, MicOff, Paintbrush, PenLine, PlayCircle, Save, SpellCheck, Trash2, Upload, Wand2, X, PauseCircle, Download } from 'lucide-react';
+import { ArrowLeft, BookText, Check, Copy, History, ImageIcon, Link, Loader2, Mic, MicOff, Paintbrush, PenLine, PlayCircle, Save, SpellCheck, Trash2, Upload, Wand2, X, PauseCircle, Download, FileAudio, Voicemail } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,7 @@ import type { Poem, View, AppSettings } from '@/types';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -22,6 +23,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent } from '../ui/card';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
 
 const backgrounds = [
   { name: 'Papel Amassado', url: 'https://placehold.co/600x400.png', dataAiHint: 'wrinkled paper' },
@@ -40,6 +43,25 @@ const colors = [
   { name: 'Rosa', bgClass: 'bg-pink-100', textClass: 'text-pink-900' },
   { name: 'Cinza', bgClass: 'bg-gray-200', textClass: 'text-gray-900' },
 ];
+
+const voices = {
+  male: [
+    { value: 'algenib', label: 'Masculina 1 (Padrão)' },
+    { value: 'achernar', label: 'Masculina 2' },
+    { value: 'alnilam', label: 'Masculina 3' },
+    { value: 'orus', label: 'Masculina 4' },
+    { value: 'rasalgethi', label: 'Masculina 5' },
+    { value: 'zubenelgenubi', label: 'Masculina 6' }
+  ],
+  female: [
+    { value: 'vindemiatrix', label: 'Feminina 1' },
+    { value: 'aoede', label: 'Feminina 2' },
+    { value: 'callirrhoe', label: 'Feminina 3' },
+    { value: 'leda', label: 'Feminina 4' },
+    { value: 'erinome', label: 'Feminina 5' },
+    { value: 'pulcherrima', label: 'Feminina 6' }
+  ]
+};
 
 type SuggestionDialogProps = {
     originalText: string;
@@ -83,11 +105,13 @@ type EditorViewProps = {
     onNavigate: (view: View) => void;
     onDelete: (id: string) => void;
     settings: AppSettings;
+    setSettings: (settings: AppSettings | ((prev: AppSettings) => AppSettings)) => void;
 }
 
-export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorViewProps) => {
+export const EditorView = ({ onBack, onSave, poem, onDelete, settings, setSettings }: EditorViewProps) => {
     const [title, setTitle] = useState(poem?.title || '');
     const [content, setContent] = useState(poem?.content || '');
+    const [audioUrl, setAudioUrl] = useState(poem?.audioUrl || '');
     const [background, setBackground] = useState(poem?.background || { type: 'color', value: 'bg-card' });
     const [imageUrls, setImageUrls] = useState<string[]>(poem?.imageUrls || []);
     const [isAiLoading, setIsAiLoading] = useState(false);
@@ -96,6 +120,7 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const backgroundFileInputRef = useRef<HTMLInputElement>(null);
     const contentImageFileInputRef = useRef<HTMLInputElement>(null);
+    const audioFileInputRef = useRef<HTMLInputElement>(null);
     const [isListening, setIsListening] = useState(false);
     const recognitionRef = useRef<any>(null);
     const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -108,12 +133,13 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
 
     const handleSave = () => {
         const newPoem: Poem = {
-            ...(currentPoemState || {}),
+            ...(currentPoemState || {} as Poem),
             id: currentPoemState?.id || `poem_${Date.now()}`,
             title: title || 'Sem Título',
             content,
             background,
             imageUrls,
+            audioUrl,
             excerpt: content.substring(0, 80) + '...',
             tags: currentPoemState?.tags || ['Novo'],
             updatedAt: Timestamp.now(),
@@ -143,7 +169,7 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
             }
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [title, content, background, imageUrls, settings.autosaveInterval]);
+    }, [title, content, background, imageUrls, audioUrl, settings.autosaveInterval]);
     
     const handleAiAction = async (action: 'CORRECT_SPELLING' | 'SUGGEST_RHYMES' | 'SUGGEST_IMPROVEMENTS') => {
         if (!content) {
@@ -211,6 +237,18 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
             reader.readAsDataURL(file);
         }
     };
+
+    const handleAudioUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setAudioUrl(reader.result as string);
+                toast({ title: "Áudio Carregado", description: "O áudio foi anexado ao poema." });
+            };
+            reader.readAsDataURL(file);
+        }
+    };
     
     const removeContentImage = (index: number) => {
         setImageUrls(currentUrls => currentUrls.filter((_, i) => i !== index));
@@ -270,7 +308,7 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
 
         setNarration(prev => ({ ...prev, isLoading: true }));
         try {
-            const { audioDataUri } = await narratePoem(fullText);
+            const { audioDataUri } = await narratePoem({ text: fullText, voice: settings.narrationVoice });
             setNarration({ audioUrl: audioDataUri, isPlaying: true, isLoading: false });
         } catch (error) {
             console.error("Narration failed", error);
@@ -332,7 +370,7 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
                         <ArrowLeft />
                     </Button>
                     <h1 className={cn("text-lg font-bold", textColorClass)}>{poem ? "Editar Poema" : "Editor Livre"}</h1>
-                    <div className='flex items-center space-x-2'>
+                    <div className='flex items-center space-x-1'>
                         <Button variant="ghost" size="icon" onClick={toggleListening} className={cn(textColorClass, isListening ? "text-red-500 animate-pulse" : "")}>
                            {isListening ? <MicOff /> : <Mic />}
                         </Button>
@@ -340,6 +378,12 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
                             <ImageIcon />
                         </Button>
                         <input type="file" ref={contentImageFileInputRef} onChange={handleContentImageUpload} className="hidden" accept="image/*" />
+                        
+                        <Button variant="ghost" size="icon" onClick={() => audioFileInputRef.current?.click()} className={textColorClass}>
+                            <FileAudio />
+                        </Button>
+                        <input type="file" ref={audioFileInputRef} onChange={handleAudioUpload} className="hidden" accept="audio/*" />
+
 
                         <Popover>
                             <PopoverTrigger asChild>
@@ -432,9 +476,37 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
                             </DialogContent>
                         </Dialog>
                         
-                        <Button variant="ghost" size="icon" onClick={handleNarration} disabled={narration.isLoading || isAiLoading} className={textColorClass}>
-                            {narration.isLoading ? <Loader2 className="animate-spin"/> : narration.isPlaying ? <PauseCircle /> : <PlayCircle />}
-                        </Button>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="icon" disabled={narration.isLoading || isAiLoading} className={textColorClass}>
+                                    {narration.isLoading ? <Loader2 className="animate-spin"/> : <PlayCircle />}
+                                </Button>
+                            </PopoverTrigger>
+                             <PopoverContent className="w-auto p-4 space-y-2">
+                                <div className='space-y-1'>
+                                    <Label>Voz da Narração</Label>
+                                    <Select value={settings.narrationVoice} onValueChange={(v) => setSettings(s => ({...s, narrationVoice: v}))}>
+                                        <SelectTrigger className="w-48">
+                                            <SelectValue placeholder="Selecione uma voz"/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectGroup>
+                                                <SelectLabel>Vozes Masculinas</SelectLabel>
+                                                {voices.male.map(voice => <SelectItem key={voice.value} value={voice.value}>{voice.label}</SelectItem>)}
+                                            </SelectGroup>
+                                            <SelectGroup>
+                                                <SelectLabel>Vozes Femininas</SelectLabel>
+                                                {voices.female.map(voice => <SelectItem key={voice.value} value={voice.value}>{voice.label}</SelectItem>)}
+                                            </SelectGroup>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <Button onClick={handleNarration} disabled={narration.isLoading || isAiLoading} className="w-full">
+                                    {narration.isLoading ? <Loader2 className="animate-spin h-4 w-4"/> : "Narrar Poema"}
+                                </Button>
+                            </PopoverContent>
+                        </Popover>
+
                         <audio ref={audioRef} className="hidden" />
 
                         {poem && (
@@ -497,23 +569,32 @@ export const EditorView = ({ onBack, onSave, poem, onDelete, settings }: EditorV
                         </div>
                     )}
                 </main>
-
-                {narration.audioUrl && (
-                    <footer className="p-4 border-t bg-background/80 backdrop-blur-sm">
-                        <div className="flex items-center gap-4">
-                             <Button variant="ghost" size="icon" onClick={() => setNarration(p => ({...p, isPlaying: !p.isPlaying}))}>
-                                {narration.isPlaying ? <PauseCircle className="h-6 w-6"/> : <PlayCircle className="h-6 w-6"/>}
-                             </Button>
-                             <div className="w-full h-2 bg-muted rounded-full overflow-hidden relative">
-                                {/* Progress bar - can be implemented later */}
+                
+                {(narration.audioUrl || audioUrl) && (
+                     <footer className="p-4 border-t bg-background/80 backdrop-blur-sm">
+                        {narration.audioUrl && (
+                            <div className="flex items-center gap-4">
+                                <Button variant="ghost" size="icon" onClick={() => setNarration(p => ({...p, isPlaying: !p.isPlaying}))}>
+                                    {narration.isPlaying ? <PauseCircle className="h-6 w-6"/> : <PlayCircle className="h-6 w-6"/>}
+                                </Button>
+                                <span className="text-sm font-medium w-24">Narração da IA</span>
+                                <a href={narration.audioUrl} download={`${title || 'poema'}.wav`}>
+                                    <Button variant="ghost" size="icon">
+                                        <Download className="h-5 w-5"/>
+                                    </Button>
+                                </a>
+                            </div>
+                        )}
+                        {narration.audioUrl && audioUrl && <Separator className="my-2" />}
+                         {audioUrl && (
+                             <div className="flex items-center gap-4">
+                                <audio src={audioUrl} controls className="w-full"></audio>
+                                <Button variant="ghost" size="icon" onClick={() => setAudioUrl('')}>
+                                    <Trash2 className="h-5 w-5 text-destructive" />
+                                </Button>
                              </div>
-                             <a href={narration.audioUrl} download={`${title || 'poema'}.wav`}>
-                                 <Button variant="ghost" size="icon">
-                                     <Download className="h-6 w-6"/>
-                                 </Button>
-                             </a>
-                        </div>
-                    </footer>
+                         )}
+                     </footer>
                 )}
 
                 {suggestion && (
